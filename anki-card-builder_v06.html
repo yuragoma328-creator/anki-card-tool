@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>暗記カード整形ツール</title>
+<style>
+  :root{
+    --ink:#17212B; --ink-soft:#54646F; --ink-faint:#8A9AA3;
+    --paper:#F5F7F3; --card:#FFFFFF; --rule:#E0E5DE; --rule-strong:#C9D2C9;
+    --signal:#0E6E5B; --signal-soft:#E4EFEA;
+    --alert:#A03A26; --alert-soft:#FBEAE5;
+    --warn:#7C6210; --warn-soft:#FAF2DA; --warn-line:#E6D9A8;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", "Noto Sans JP", "Segoe UI", sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.7;-webkit-text-size-adjust:100%}
+  .wrap{max-width:880px;margin:0 auto;padding:32px 20px 80px}
+
+  header{margin-bottom:26px}
+  h1{font-size:20px;font-weight:700;margin:0 0 6px;letter-spacing:.02em}
+  .sub{color:var(--ink-soft);font-size:13px;margin:0}
+  .legend{font-family:var(--mono);font-size:12.5px;background:var(--card);border:1px solid var(--rule);
+          border-radius:6px;padding:12px 14px;margin:18px 0 0;line-height:2}
+  .legend .k{color:var(--signal);background:var(--signal-soft);padding:1px 6px;border-radius:3px;font-weight:700}
+  .legend-note{font-size:12px;color:var(--ink-faint);margin:8px 0 0;line-height:1.6}
+  code{font-family:var(--mono);font-size:12.5px;background:rgba(0,0,0,.055);padding:1px 4px;border-radius:3px}
+
+  section{margin-top:26px}
+  .bar{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+  .bar h2{font-size:12px;font-family:var(--mono);font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-soft);margin:0}
+  .count{font-family:var(--mono);font-size:12px;color:var(--signal);font-weight:700}
+
+  textarea#src{width:100%;min-height:230px;resize:vertical;font-family:var(--mono);font-size:13.5px;
+    line-height:1.8;color:var(--ink);background:var(--card);border:1px solid var(--rule-strong);border-radius:6px;padding:14px}
+  textarea#src::placeholder{color:var(--ink-faint)}
+  textarea:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid var(--signal);outline-offset:1px}
+
+  .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  button{font-family:var(--sans);font-size:13.5px;font-weight:600;padding:8px 16px;border-radius:5px;cursor:pointer;
+    border:1px solid var(--rule-strong);background:var(--card);color:var(--ink);transition:background .12s ease}
+  button:hover{background:#EEF1EC}
+  button.primary{background:var(--signal);border-color:var(--signal);color:#fff}
+  button.primary:hover{background:#0B5A4A}
+  button.mono{font-family:var(--mono);font-size:12.5px;letter-spacing:.03em}
+  .spacer{flex:1}
+
+  .msg{border-radius:6px;padding:11px 14px;margin-top:12px;font-size:13.5px;line-height:1.65}
+  .msg.err{background:var(--alert-soft);border:1px solid #EBC8BE;color:var(--alert)}
+  .msg.warn{background:var(--warn-soft);border:1px solid var(--warn-line);color:var(--warn)}
+  .msg ul{margin:6px 0 0;padding-left:20px}
+  .msg li{margin:3px 0}
+  .msg .head{font-weight:700;font-size:12px;font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase}
+
+  .card{background:var(--card);border:1px solid var(--rule);border-radius:8px;padding:14px 16px 16px;margin-bottom:12px}
+  .card.flagged{border-color:var(--warn-line);background:#FFFDF6}
+  .card-head{display:flex;align-items:center;gap:7px;margin-bottom:12px;flex-wrap:wrap}
+  .num{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--signal);background:var(--signal-soft);border-radius:4px;padding:3px 8px;letter-spacing:.05em}
+  .score{font-family:var(--mono);font-size:11.5px;color:var(--ink-faint);border:1px solid var(--rule);border-radius:4px;padding:2px 7px}
+  .score.hot{color:var(--warn);border-color:var(--warn-line);background:var(--warn-soft);font-weight:700}
+  .chip{font-size:11px;background:var(--signal-soft);color:var(--signal);border-radius:3px;padding:2px 6px;font-weight:600}
+  .src-line{font-family:var(--mono);font-size:11.5px;color:var(--ink-faint)}
+  .icon{border:1px solid var(--rule);background:var(--card);width:30px;height:28px;padding:0;border-radius:4px;font-size:12px;color:var(--ink-soft);line-height:1}
+  .icon:disabled{opacity:.3;cursor:default}
+  .icon:disabled:hover{background:var(--card)}
+
+  .field{margin-bottom:9px}
+  .field:last-child{margin-bottom:0}
+  .field label{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--ink-faint);margin-bottom:3px}
+  .field .hint{font-weight:400;letter-spacing:0}
+  .field textarea,.field input{width:100%;font-family:var(--mono);font-size:13px;line-height:1.75;color:var(--ink);
+    background:#FBFCFA;border:1px solid var(--rule);border-radius:5px;padding:8px 10px}
+  .field textarea{resize:vertical;min-height:64px}
+  .cardwarn{font-size:12px;color:var(--warn);background:var(--warn-soft);border:1px solid var(--warn-line);
+    border-radius:5px;padding:7px 10px;margin-bottom:9px;line-height:1.6}
+  .cardwarn div{margin:2px 0}
+
+  .opts{background:var(--card);border:1px solid var(--rule);border-radius:8px;padding:16px;display:grid;gap:14px}
+  .deck-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+  .deck-row label{font-size:13.5px;color:var(--ink-soft);flex-shrink:0}
+  #deck{font-family:var(--mono);font-size:13.5px;padding:8px 10px;border:1px solid var(--rule-strong);
+    border-radius:5px;background:#FBFCFA;color:var(--ink);flex:1;min-width:180px}
+  .fixed-note{font-size:12.5px;color:var(--ink-faint);line-height:1.6;margin:0}
+  .preview{background:#F3F5F1;border:1px solid var(--rule);border-radius:6px;padding:10px 12px;
+    font-family:var(--mono);font-size:12px;line-height:1.75;color:var(--ink-soft);white-space:pre;overflow-x:auto;margin:0}
+  .preview .k{color:var(--signal);font-weight:700}
+  .cap{font-size:11.5px;color:var(--ink-faint);margin:6px 0 0;line-height:1.55}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--ink);color:#fff;
+    font-size:13px;padding:9px 18px;border-radius:20px;opacity:0;pointer-events:none;transition:opacity .2s ease;z-index:10}
+  .toast.on{opacity:1}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+  @media (max-width:560px){.wrap{padding:22px 14px 60px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>暗記カード整形ツール</h1>
+  <p class="sub">プレフィックス付きテキストを、Anki取り込み用のTSVに変換します。</p>
+  <div class="legend">
+<span class="k">Q</span> 問題（1枚に1行）<br>
+<span class="k">A</span> 回答（1項目1行。複数可）<br>
+<span class="k">S</span> 出典（省略可）<br>
+<span class="k">T</span> タグ（省略可）
+  </div>
+  <p class="legend-note">
+    行頭は<strong>英字1文字＋半角スペース1つ</strong>。<code>Q</code> の出現が新しいカードの開始です。空行は無視されます。本文にはどんな記号でも書けます。
+  </p>
+</header>
+
+<section>
+  <div class="bar"><h2>入力</h2></div>
+  <textarea id="src" spellcheck="false" placeholder="Q 問題文&#10;A 回答の1項目&#10;A 回答の1項目&#10;S PDF p55 通信工学1 問題1&#10;T 電子回路"></textarea>
+  <div class="actions">
+    <button class="primary" id="parse">カードに変換</button>
+    <button id="clear">消去</button>
+    <span class="spacer"></span>
+    <button id="load">.txt を読み込む</button>
+    <button id="sample">記入例を入れる</button>
+    <input type="file" id="file" accept=".txt,text/plain"
+           style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+  </div>
+  <div id="messages"></div>
+</section>
+
+<section id="result" hidden>
+  <div class="bar"><h2>カード</h2><span class="count" id="count"></span></div>
+  <div class="actions" style="margin:0 0 12px">
+    <button id="add">カードを追加</button>
+    <button id="copyBack" class="mono">元の形式でコピー</button>
+  </div>
+  <div id="cards"></div>
+</section>
+
+<section id="exportSec" hidden>
+  <div class="bar"><h2>書き出し</h2></div>
+  <div class="opts">
+    <div class="deck-row">
+      <label for="deck">デッキ名</label>
+      <input type="text" id="deck" spellcheck="false">
+      <button class="icon" id="regen" title="タグと現在時刻から作り直す" aria-label="デッキ名を作り直す">↻</button>
+    </div>
+    <p class="fixed-note">
+      ノートタイプは <code>Basic-AnkiGen</code> に固定。出典は回答の末尾にまとめ、問題・回答の2フィールドで書き出します。
+    </p>
+    <div>
+      <div class="preview" id="preview"></div>
+      <p class="cap">ファイルの先頭に書き込まれる取り込み設定です。Ankiの取り込み画面がこのとおりになっていれば成功です。</p>
+    </div>
+    <div class="actions" style="margin:0">
+      <button class="primary" id="save">ファイルを保存</button>
+    </div>
+  </div>
+</section>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============================================================
+     設定（card-machine-spec v08）
+  ============================================================ */
+  var NOTETYPE = "Basic-AnkiGen";
+  var TAG_COLUMN = 3;
+  var FALLBACK_NAME = "暗記カード";
+  var SCORE_LIMIT = 500;      // §10-1
+  var LINE_LIMIT  = 7;        // §10  これを超えたら警告
+  var MARKERS = ["【問題図貼付】","【解答図貼付】","【作図貼付】"];
+  var SUP = /[\u00B2\u00B3\u00B9\u2070\u2071\u2074-\u208E\u2090-\u209C]/;
+  var WIDE = /[\u3000-\u9FFF\uFF00-\uFF60\u2460-\u24FF\u2776-\u277F]/;
+
+  /* ============================================================
+     解析（§3・§6）
+     エラー＝構文を解析できない／警告＝解析はできるが内容に問題（§5）
+  ============================================================ */
+  function parseAll(text){
+    var lines = text.split(/\r?\n/);
+    var cards = [], errors = [], cur = null, aTried = 0;
+
+    function closeCard(){
+      if(!cur) return;
+      if(cur.invalid){ cur = null; aTried = 0; return; }
+      if(cur.A.length === 0){
+        if(aTried === 0) errors.push(cur.line + "行目：`A` が1行もありません。");
+        cur = null; aTried = 0; return;
+      }
+      cards.push(cur); cur = null; aTried = 0;
+    }
+
+    lines.forEach(function(raw, i){
+      var no = i + 1;
+      if(raw.trim() === "") return;                       // 空行は無視
+
+      var p = raw.charAt(0), sp = raw.charAt(1);
+      if("QAST".indexOf(p) < 0 || sp !== " "){
+        if("qast".indexOf(p) >= 0 && sp === " ")
+          errors.push(no + "行目：プレフィックスは大文字で書いてください。");
+        else
+          errors.push(no + "行目：行頭を Q / A / S / T ＋半角スペースにしてください。");
+        return;
+      }
+      var body = raw.slice(2).trim();
+
+      if(p === "Q"){
+        if(cur && !cur.invalid && cur.A.length === 0 && aTried === 0){
+          errors.push(cur.line + "行目：`Q` が連続しています。1枚に問いは1つです。");
+          cur = null; aTried = 0;
+        } else closeCard();
+        cur = {Q:body, A:[], S:"", T:"", line:no, invalid:false, Sn:0, Tn:0};
+        if(body === ""){ errors.push(no + "行目：`Q` の本文が空です。"); cur.invalid = true; }
+        return;
+      }
+      if(!cur){ errors.push(no + "行目：`Q` が無いまま `" + p + "` が始まっています。"); return; }
+
+      if(p === "A"){
+        aTried++;
+        if(body === ""){ errors.push(no + "行目：`A` の本文が空です。"); return; }
+        cur.A.push(body);
+      } else if(p === "S"){ cur.Sn++; cur.S = body; }
+      else { cur.Tn++; cur.T = body; }
+    });
+    closeCard();
+    return {cards:cards, errors:errors};
+  }
+
+  /* ============================================================
+     警告（§10）
+  ============================================================ */
+  function checkCard(c){
+    var w = [];
+    if(c.Sn > 1) w.push("`S` が複数あります。最後の1つを採用しました。");
+    if(c.Tn > 1) w.push("`T` が複数あります。最後の1つを採用しました。");
+
+    var s = score(c.A);
+    if(s >= SCORE_LIMIT) w.push("表示量が大きめです（" + s + "）。比較軸や項目を絞れないか見直してください。");
+    if(c.A.length > LINE_LIMIT) w.push("`A` が" + c.A.length + "行あります。項目を絞れないか見直してください。");
+
+    var found = c.Q.match(/【[^】]*貼付[^】]*】/g) || [];
+    var known = [], seen = {};
+    found.forEach(function(m){
+      if(MARKERS.indexOf(m) < 0){ w.push("貼付マーカー「" + m + "」は使えません。"); return; }
+      if(seen[m]) w.push("「" + m + "」が重複しています。");
+      seen[m] = 1; known.push(m);
+    });
+    var sorted = known.slice().sort(function(a,b){ return MARKERS.indexOf(a) - MARKERS.indexOf(b); });
+    if(known.join("") !== sorted.join("")) w.push("貼付マーカーの順序が違います（問題図 → 解答図 → 作図）。");
+    if(known.length && !c.S) w.push("貼付マーカーがありますが `S` がありません。貼付箇所を特定できません。");
+
+    var body = [c.Q].concat(c.A).join("");
+    if(SUP.test(body)) w.push("Unicode上下付き文字があります。MathJaxで書いてください。");
+    [["\\(","\\)"],["\\[","\\]"],["{","}"]].forEach(function(pr){
+      if(count(body,pr[0]) !== count(body,pr[1]))
+        w.push("`" + pr[0] + "` と `" + pr[1] + "` の数が合いません。");
+    });
+    if(hasDollar(body)) w.push("`$` による数式記法があります。`\\( \\)` を使ってください。");
+    return w;
+  }
+  function count(s,sub){ var n=0,i=0; while((i=s.indexOf(sub,i))>=0){ n++; i+=sub.length; } return n; }
+  function hasDollar(s){ for(var i=0;i<s.length;i++) if(s[i]==="$" && (i===0 || s[i-1]!=="\\")) return true; return false; }
+
+  /* ============================================================
+     表示量スコア（§10-1）
+       数式の内側：\コマンド=1、{}_^と空白=0、その他=1
+       数式の外側：全角=2、半角=1
+  ============================================================ */
+  function mathW(x){ return x.replace(/\\[a-zA-Z]+/g,"X").replace(/[{}_^\s]/g,"").length; }
+  function outW(x){ var w=0; for(var i=0;i<x.length;i++) w += WIDE.test(x.charAt(i)) ? 2 : 1; return w; }
+  function score(A){
+    var t = A.join(""), tot = 0;
+    t = t.replace(/\\\[([\s\S]*?)\\\]/g, function(_,m){ tot += mathW(m); return ""; });
+    t = t.replace(/\\\(([\s\S]*?)\\\)/g, function(_,m){ tot += mathW(m); return ""; });
+    return tot + outW(t);
+  }
+
+  /* ============================================================
+     デッキ名（§4-3）
+  ============================================================ */
+  function topTag(){
+    var f={}, best="", max=0;
+    state.forEach(function(c){
+      c.T.trim().split(/[\s\u3000]+/).filter(Boolean).forEach(function(t){
+        f[t]=(f[t]||0)+1; if(f[t]>max){ max=f[t]; best=t; }
+      });
+    });
+    return best;
+  }
+  function stamp(){
+    var d=new Date(), p=function(n){ return String(n).padStart(2,"0"); };
+    return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+"-"+p(d.getHours())+p(d.getMinutes());
+  }
+  function makeDeckName(){ return cleanDeck(topTag()||FALLBACK_NAME)+" "+stamp(); }
+  function cleanDeck(s){
+    return s.replace(/:/g,"-").replace(/-{2,}/g,"-").replace(/[\r\n\t]/g," ").replace(/\s+/g," ").trim();
+  }
+  function safeFileName(s){ return cleanDeck(s).replace(/[\/\\*?"<>|]/g,"-") || "anki"; }
+
+  /* ============================================================
+     状態と描画
+  ============================================================ */
+  var state = [];
+  var $ = function(id){ return document.getElementById(id); };
+
+  function render(){
+    var box = $("cards");
+    box.innerHTML = "";
+    $("count").textContent = state.length + "枚";
+    $("result").hidden = state.length === 0;
+    $("exportSec").hidden = state.length === 0;
+    state.forEach(function(c,i){ box.appendChild(cardEl(c,i)); });
+    if(state.length && !$("deck").value.trim()) $("deck").value = makeDeckName();
+    updatePreview();
+  }
+
+  function cardEl(c,i){
+    var warns = checkCard(c);
+    var s = score(c.A);
+    var el = document.createElement("div");
+    el.className = "card" + (warns.length ? " flagged" : "");
+
+    var head = document.createElement("div");
+    head.className = "card-head";
+    var html = '<span class="num">' + String(i+1).padStart(2,"0") + '</span>' +
+               '<span class="score' + (s>=SCORE_LIMIT ? " hot" : "") + '">' + s + '</span>';
+    (c.Q.match(/【[^】]*貼付[^】]*】/g)||[]).forEach(function(m){
+      html += '<span class="chip">' + m.replace(/[【】]/g,"") + '</span>';
+    });
+    if(c.line) html += '<span class="src-line">' + c.line + '行目</span>';
+    html += '<span class="spacer"></span>';
+    head.innerHTML = html;
+    head.appendChild(iconBtn("↑","上へ移動", i===0, function(){ swap(i,i-1); }));
+    head.appendChild(iconBtn("↓","下へ移動", i===state.length-1, function(){ swap(i,i+1); }));
+    head.appendChild(iconBtn("✕","このカードを削除", false, function(){ state.splice(i,1); render(); }));
+    el.appendChild(head);
+
+    if(warns.length){
+      var wd = document.createElement("div");
+      wd.className = "cardwarn";
+      warns.forEach(function(t){ var d=document.createElement("div"); d.textContent="・"+t; wd.appendChild(d); });
+      el.appendChild(wd);
+    }
+
+    el.appendChild(field("Q  問題", c.Q, false, function(v){ c.Q=v; render(); }, ""));
+    el.appendChild(field("A  回答", c.A.join("\n"), true, function(v){
+      c.A = v.split(/\r?\n/).map(function(x){ return x.trim(); }).filter(Boolean); render();
+    }, "1行＝1項目（" + c.A.length + "行）"));
+    el.appendChild(field("S  出典", c.S, false, function(v){ c.S=v; render(); }, "省略可"));
+    el.appendChild(field("T  タグ", c.T, false, function(v){ c.T=v; render(); }, "スペース区切り"));
+    return el;
+  }
+
+  function iconBtn(label,title,disabled,fn){
+    var b=document.createElement("button");
+    b.className="icon"; b.textContent=label; b.title=title;
+    b.setAttribute("aria-label",title); b.disabled=disabled;
+    b.addEventListener("click",fn); return b;
+  }
+
+  function field(name,value,multi,onChange,hint){
+    var wrap=document.createElement("div"); wrap.className="field";
+    var id="f"+Math.random().toString(36).slice(2,9);
+    var lab=document.createElement("label"); lab.setAttribute("for",id);
+    lab.innerHTML = '<span>'+name+'</span><span class="hint">'+(hint||"")+'</span>';
+    var inp=document.createElement(multi?"textarea":"input");
+    inp.id=id; inp.value=value; inp.spellcheck=false;
+    if(multi) inp.rows=Math.max(2, value.split("\n").length);
+    inp.addEventListener("change",function(){ onChange(inp.value); });
+    wrap.appendChild(lab); wrap.appendChild(inp); return wrap;
+  }
+
+  function swap(a,b){ var t=state[a]; state[a]=state[b]; state[b]=t; render(); }
+
+  /* ============================================================
+     メッセージ
+  ============================================================ */
+  function showErrors(errors, okCount){
+    var box=$("messages"); box.innerHTML="";
+    if(errors.length){
+      var d=document.createElement("div"); d.className="msg err";
+      var h=document.createElement("div"); h.className="head"; h.textContent="取り込めなかった行";
+      var ul=document.createElement("ul");
+      errors.forEach(function(t){ var li=document.createElement("li"); li.textContent=t; ul.appendChild(li); });
+      d.appendChild(h); d.appendChild(ul); box.appendChild(d);
+    }
+    if(!errors.length && okCount>0) toast(okCount+"枚を読み込みました");
+  }
+  var toastTimer;
+  function toast(text){
+    var t=$("toast"); t.textContent=text; t.classList.add("on");
+    clearTimeout(toastTimer); toastTimer=setTimeout(function(){ t.classList.remove("on"); },1900);
+  }
+
+  /* ============================================================
+     書き出し（§4）
+  ============================================================ */
+  function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+  /* 表面の小問改行（spec 4-1）
+     改行するのは、次を全部満たす位置だけ。
+       1) 小問記号が \( \) \[ \] の内側でない
+       2) 記号の直前が 。／半角・全角スペース／）／) のいずれか
+          ただし \)（数式の閉じ）の直後は、括弧付き番号のときだけ許す
+          （丸数字は式番号にも使われるため）
+       3) 直前が小問記号そのものでない（(2)(1)より… のような参照を止める）
+     エスケープ済みの文字列に対して行うので、挿入した <br> はそのまま残る。 */
+  var CIR      = "\u2460-\u246E";
+  var PARENMK  = "\\([1-9][0-9]?\\)|（[1-9１-９][0-9０-９]?）|（[ア-ン]）|\\([ア-ン]\\)";
+  var MARK_SRC = "(?:" + PARENMK + "|[" + CIR + "])";
+  var MARK_G     = new RegExp(MARK_SRC, "g");
+  var MARK_PAREN = new RegExp("^(?:" + PARENMK + ")");
+  var PREV_MARK  = new RegExp("(?:" + MARK_SRC + ")[ \u3000]*$");
+
+  function splitQ(t){
+    var math = [], re = /\\\(.*?\\\)|\\\[.*?\\\]/g, m;
+    while((m = re.exec(t)) !== null){ math.push([m.index, m.index + m[0].length]); }
+    function inMath(i){
+      for(var k = 0; k < math.length; k++){ if(i >= math[k][0] && i < math[k][1]) return true; }
+      return false;
+    }
+    var cuts = [], seen = {};
+    MARK_G.lastIndex = 0;
+    while((m = MARK_G.exec(t)) !== null){
+      var i = m.index;
+      if(i === 0 || inMath(i)) continue;
+      var p = t.charAt(i - 1), at = i, skipTo = i;
+      if(p === " " || p === "\u3000"){
+        var j = i;
+        while(j > 0 && (t.charAt(j - 1) === " " || t.charAt(j - 1) === "\u3000")) j--;
+        if(j === 0) continue;
+        at = j; skipTo = i;
+      } else if(p === "。" || p === "）"){
+        /* そのまま切る */
+      } else if(p === ")"){
+        if(t.charAt(i - 2) === "\\" && !MARK_PAREN.test(m[0])) continue;
+      } else {
+        continue;
+      }
+      if(PREV_MARK.test(t.slice(0, i).replace(/[ \u3000]+$/, ""))) continue;
+      if(seen[at]) continue;
+      seen[at] = true; cuts.push([at, skipTo]);
+    }
+    if(cuts.length === 0) return t;
+    cuts.sort(function(a, b){ return a[0] - b[0]; });
+    var out = "", prev = 0;
+    for(var k = 0; k < cuts.length; k++){
+      out += t.slice(prev, cuts[k][0]) + "<br>";
+      prev = cuts[k][1];
+    }
+    return out + t.slice(prev);
+  }
+
+  function rows(){
+    return state.map(function(c){
+      var front = splitQ(esc(c.Q.trim()));
+      var back  = c.A.map(function(a){ return esc(a.trim()); }).join("<br>");
+      var s = c.S.trim();
+      if(s) back += '<br><span style="font-size:0.8em;color:#888">出典：' + esc(s) + '</span>';
+      var tags = c.T.trim().split(/[\s\u3000]+/).filter(Boolean).join(" ");
+      return [front, back, tags];
+    });
+  }
+  function headerLines(){
+    return ["#separator:tab","#html:true","#notetype:"+NOTETYPE,
+            "#deck:"+cleanDeck($("deck").value),"#tags column:"+TAG_COLUMN];
+  }
+  function updatePreview(){
+    $("preview").innerHTML = headerLines().map(function(line){
+      var i=line.indexOf(":");
+      return '<span class="k">'+escHtml(line.slice(0,i+1))+'</span>'+escHtml(line.slice(i+1));
+    }).join("\n");
+  }
+  function escHtml(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+  function toTsv(){
+    var body = rows().map(function(r){
+      return r.map(function(v){ return v.replace(/\t/g," "); }).join("\t");
+    });
+    return headerLines().concat(body).join("\n") + "\n";
+  }
+  /* 保存形式（仕様書 §4-4）
+     内容と一致する text/tab-separated-values を用いる。
+     MacBook と iPad(Edge) で .txt の付加が起きないことを実測で確認済み。
+     万一 .tsv.txt のように付加される環境が出たら、下の MIME を
+     "application/octet-stream" に変えると回避できる（仕様書 §4-4 の実測記録を参照）。 */
+  var MIME = "text/tab-separated-values;charset=utf-8";
+  function download(){
+    var name = safeFileName($("deck").value) + ".tsv";
+    var blob = new Blob(["\uFEFF"+toTsv()], {type:MIME});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a"); a.href=url; a.download=name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); },1000);
+    toast(name+" を保存しました");
+  }
+
+  /* ============================================================
+     操作
+  ============================================================ */
+  $("parse").addEventListener("click", function(){
+    var text=$("src").value;
+    if(text.trim()===""){ showErrors(["入力欄が空です。"],0); return; }
+    var r=parseAll(text);
+    state=r.cards; $("deck").value="";
+    showErrors(r.errors, r.cards.length);
+    render();
+  });
+  $("load").addEventListener("click", function(){ $("file").value = ""; $("file").click(); });
+  $("file").addEventListener("change", function(){
+    var f = this.files[0]; if(!f){ return; }
+    var r = new FileReader();
+    r.onload = function(){
+      $("src").value = r.result;
+      toast(f.name + " を読み込みました。「カードに変換」を押してください");
+      $("src").focus();
+    };
+    r.onerror = function(){ showErrors(["ファイルを読み込めませんでした。"],0); };
+    r.readAsText(f, "UTF-8");
+  });
+  $("clear").addEventListener("click", function(){
+    $("src").value=""; $("messages").innerHTML="";
+    state=[]; $("deck").value=""; render(); $("src").focus();
+  });
+  $("sample").addEventListener("click", function(){
+    $("src").value =
+"Q 【問題図貼付】図2のエミッタ抵抗帰還増幅回路を、図3の低周波交流等価回路へ変換する手順を示せ。\n"+
+"A ❶直流電源\\(V_{CC}\\)を信号に対して接地する\n"+
+"A ❷\\(V_{CC}\\)が短絡なので\\(R_1\\)と\\(R_2\\)は並列\\(R_1 \\parallel R_2\\)になる\n"+
+"A ❸\\(C_B\\)と\\(C_L\\)は中域で短絡とみなす\n"+
+"A ❹トランジスタを\\(r_{ie}\\)と電流源\\(\\beta_0 i_b\\)に置換する\n"+
+"A ❺\\(R_E\\)はバイパス容量が無いためそのまま残る\n"+
+"S PDF p55 通信工学1 問題1\n"+
+"T 電子回路\n\n"+
+"Q エミッタ接地・ベース接地・コレクタ接地の特徴を比較せよ。\n"+
+"A エミッタ接地：電圧・電流とも増幅、位相反転あり、入出力抵抗は中程度、標準の増幅段\n"+
+"A ベース接地：電流利得ほぼ1で電圧利得大、位相反転なし、入力抵抗低・出力抵抗高、高周波増幅\n"+
+"A コレクタ接地：電圧利得ほぼ1で電流利得大、位相反転なし、入力抵抗高・出力抵抗低、バッファ\n"+
+"S PDF p1 通信工学1 問題1①\n"+
+"T 電子回路";
+    $("src").focus();
+  });
+  $("add").addEventListener("click", function(){
+    state.push({Q:"",A:[],S:"",T:"",line:null,Sn:0,Tn:0,invalid:false});
+    render();
+    var last=$("cards").lastElementChild;
+    if(last) last.querySelector("input").focus();
+  });
+  $("copyBack").addEventListener("click", function(){
+    var text = state.map(function(c){
+      var out = ["Q "+c.Q.trim()];
+      c.A.forEach(function(a){ out.push("A "+a.trim()); });
+      if(c.S.trim()) out.push("S "+c.S.trim());
+      if(c.T.trim()) out.push("T "+c.T.trim());
+      return out.join("\n");
+    }).join("\n\n");
+    navigator.clipboard.writeText(text).then(
+      function(){ toast("元の形式でコピーしました"); },
+      function(){ $("src").value=text; toast("入力欄に書き戻しました"); });
+  });
+  $("regen").addEventListener("click", function(){
+    $("deck").value=makeDeckName(); updatePreview(); toast("デッキ名を作り直しました");
+  });
+  $("deck").addEventListener("input", updatePreview);
+  $("deck").addEventListener("blur", function(){
+    var v=cleanDeck($("deck").value);
+    if(v==="") v=makeDeckName();
+    $("deck").value=v; updatePreview();
+  });
+  $("save").addEventListener("click", download);
+
+  render();
+})();
+</script>
+</body>
+</html>

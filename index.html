@@ -390,8 +390,12 @@
        （Edge の会話エクスポートが区切りを $ に写像するため）
      ・カードでないコードブロックには一切触らない
        → 通貨・シェル・一般ソースコードの $ を誤変換しない
-     ・曖昧なもの（$ の数が奇数）は変換せず、そのまま残して警告に出す
+     ・曖昧なものは変換せず、そのまま残して警告に出す
+         - $ の数が奇数の行
+         - 中身にひらがな・カタカナを含むもの（$100 と $200 のような誤ペアを防ぐ。
+           正当な数式の日本語添字は漢字なので落ちない：\Delta S_{全}、\text{振幅}）
      ============================================================ */
+  var KANA = /[\u3041-\u3096\u30A1-\u30FA\u30FC]/;
   function pickCardsFromLog(md){
     var out = [], warn = [], converted = 0, blocks = 0, skipped = 0;
     var re = /```[^\n]*\n([\s\S]*?)```/g, m;
@@ -416,14 +420,35 @@
           out.push(l); return;
         }
         var n = l;
-        n = n.replace(/\$\$([^$\n]+?)\$\$/g, function(_, a){ converted++; return "\\[" + a + "\\]"; });
-        n = n.replace(/\$([^$\n]+?)\$/g,      function(_, a){ converted++; return "\\(" + a + "\\)"; });
+        n = n.replace(/\$\$([^$\n]+?)\$\$/g, function(m0, a){
+          if(KANA.test(a)){ warn.push("かなを含むので変換していません：" + a.slice(0,26)); return m0; }
+          converted++; return "\\[" + a + "\\]";
+        });
+        n = n.replace(/\$([^$\n]+?)\$/g, function(m0, a){
+          if(KANA.test(a)){ warn.push("かなを含むので変換していません：" + a.slice(0,26)); return m0; }
+          converted++; return "\\(" + a + "\\)";
+        });
         out.push(n);
       });
       out.push("");
     }
     return { lines: out, warn: warn, blocks: blocks, skipped: skipped, converted: converted,
              cards: out.filter(function(l){ return l.indexOf("Q ") === 0; }).length };
+  }
+
+  /* ============================================================
+     入力経路の保証（tests 6-5c）
+
+     ファイル選択の accept 属性には拘束力がなく、iOS/iPadOS では
+     どの経路からでも別種のファイルを選べる。**拡張子ではなく内容で判定する。**
+     ============================================================ */
+  function looksLikeTsv(t){ return /^\uFEFF?#separator:/.test(t); }
+  function looksLikeLog(t){
+    var re = /```[^\n]*\n([\s\S]*?)```/g, m;
+    while((m = re.exec(t)) !== null){
+      if(/^Q /m.test(m[1])) return true;
+    }
+    return false;
   }
 
   function showErrors(errors, okCount){
@@ -562,7 +587,18 @@
     var f = this.files[0]; if(!f){ return; }
     var r = new FileReader();
     r.onload = function(){
-      $("src").value = r.result;
+      var t = r.result;
+      if(looksLikeTsv(t)){
+        showErrors(["これは出力済みの TSV です（#separator: で始まっています）。"
+                    + "入力にはカードデータの .txt か、会話ログの .md を使ってください。"], 0);
+        return;
+      }
+      if(looksLikeLog(t)){
+        showErrors(["これは会話ログのようです（Q 行を含むコードブロックがあります）。"
+                    + "「会話ログ(.md)から取り込む」を使ってください。"], 0);
+        return;
+      }
+      $("src").value = t;
       toast(f.name + " を読み込みました。「カードに変換」を押してください");
       $("src").focus();
     };
@@ -574,10 +610,18 @@
     var f = this.files[0]; if(!f){ return; }
     var r = new FileReader();
     r.onload = function(){
-      var res = pickCardsFromLog(r.result);
+      var t = r.result;
+      if(looksLikeTsv(t)){
+        showErrors(["これは出力済みの TSV です（#separator: で始まっています）。"
+                    + "入力にはカードデータの .txt か、会話ログの .md を使ってください。"], 0);
+        return;
+      }
+      var res = pickCardsFromLog(t);
       if(res.cards === 0){
-        showErrors(["この会話ログからカードを見つけられませんでした（Q 行を含むコードブロックがありません）。"
-                    + "カードデータの .txt なら「.txt を読み込む」を使ってください。"], 0);
+        var hint = /^Q /m.test(t)
+          ? "カードデータの .txt のようです。「.txt を読み込む」を使ってください。"
+          : "Q 行を含むコードブロックが見つかりませんでした。";
+        showErrors(["この会話ログからカードを見つけられませんでした。" + hint], 0);
         return;
       }
       $("src").value = res.lines.join("\n").replace(/\n+$/, "") + "\n";

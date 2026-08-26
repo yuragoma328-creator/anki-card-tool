@@ -120,8 +120,11 @@
     <button id="clear">消去</button>
     <span class="spacer"></span>
     <button id="load">.txt を読み込む</button>
+    <button id="loadlog">会話ログ(.md)から取り込む</button>
     <button id="sample">記入例を入れる</button>
     <input type="file" id="file" accept=".txt,text/plain"
+           style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+    <input type="file" id="logfile" accept=".md,.markdown,.txt,text/plain,text/markdown"
            style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
   </div>
   <div id="messages"></div>
@@ -379,6 +382,50 @@
   /* ============================================================
      メッセージ
   ============================================================ */
+  /* ============================================================
+     会話ログからのカード取り込み（spec 2-1・2-4、tests 6-5）
+
+     ・``` で囲まれたブロックのうち、Q 行を含むものだけをカードとみなす
+     ・カード行（Q A S T）の中の $...$ / $$...$$ だけを \( \) / \[ \] に戻す
+       （Edge の会話エクスポートが区切りを $ に写像するため）
+     ・カードでないコードブロックには一切触らない
+       → 通貨・シェル・一般ソースコードの $ を誤変換しない
+     ・曖昧なもの（$ の数が奇数）は変換せず、そのまま残して警告に出す
+     ============================================================ */
+  function pickCardsFromLog(md){
+    var out = [], warn = [], converted = 0, blocks = 0, skipped = 0;
+    var re = /```[^\n]*\n([\s\S]*?)```/g, m;
+    while((m = re.exec(md)) !== null){
+      blocks++;
+      var raw = m[1].split("\n").filter(function(l){ return l.trim() !== ""; });
+      var hasQ = raw.some(function(l){ return l.indexOf("Q ") === 0; });
+      if(!hasQ){
+        skipped++;
+        if(m[1].indexOf("$") >= 0){
+          warn.push("カードでないコードブロックに $ が" + (m[1].split("$").length-1) + "件あります（変換していません）");
+        }
+        continue;
+      }
+      var bad = raw.filter(function(l){ return !/^[QAST] /.test(l); });
+      if(bad.length){
+        warn.push("カードブロック内に Q A S T 以外の行が" + bad.length + "件あります：" + bad[0].slice(0,40));
+      }
+      raw.forEach(function(l){
+        if((l.split("$").length - 1) % 2 === 1){
+          warn.push("$ の数が奇数の行は変換していません：" + l.slice(0,50));
+          out.push(l); return;
+        }
+        var n = l;
+        n = n.replace(/\$\$([^$\n]+?)\$\$/g, function(_, a){ converted++; return "\\[" + a + "\\]"; });
+        n = n.replace(/\$([^$\n]+?)\$/g,      function(_, a){ converted++; return "\\(" + a + "\\)"; });
+        out.push(n);
+      });
+      out.push("");
+    }
+    return { lines: out, warn: warn, blocks: blocks, skipped: skipped, converted: converted,
+             cards: out.filter(function(l){ return l.indexOf("Q ") === 0; }).length };
+  }
+
   function showErrors(errors, okCount){
     var box=$("messages"); box.innerHTML="";
     if(errors.length){
@@ -517,6 +564,27 @@
     r.onload = function(){
       $("src").value = r.result;
       toast(f.name + " を読み込みました。「カードに変換」を押してください");
+      $("src").focus();
+    };
+    r.onerror = function(){ showErrors(["ファイルを読み込めませんでした。"],0); };
+    r.readAsText(f, "UTF-8");
+  });
+  $("loadlog").addEventListener("click", function(){ $("logfile").value = ""; $("logfile").click(); });
+  $("logfile").addEventListener("change", function(){
+    var f = this.files[0]; if(!f){ return; }
+    var r = new FileReader();
+    r.onload = function(){
+      var res = pickCardsFromLog(r.result);
+      if(res.cards === 0){
+        showErrors(["この会話ログからカードを見つけられませんでした（Q 行を含むコードブロックがありません）。"
+                    + "カードデータの .txt なら「.txt を読み込む」を使ってください。"], 0);
+        return;
+      }
+      $("src").value = res.lines.join("\n").replace(/\n+$/, "") + "\n";
+      showErrors(res.warn, 0);
+      toast(f.name + "：" + res.cards + "枚を取り込み、数式区切りを" + res.converted + "箇所戻しました"
+            + (res.skipped ? "（カード以外のコードブロック" + res.skipped + "個は触れていません）" : "")
+            + "。「カードに変換」を押してください");
       $("src").focus();
     };
     r.onerror = function(){ showErrors(["ファイルを読み込めませんでした。"],0); };

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>暗記カード整形ツール</title>
+<title>Ankiカード整形ツール</title>
 <style>
   :root{
     --ink:#17212B; --ink-soft:#54646F; --ink-faint:#8A9AA3;
@@ -21,6 +21,10 @@
 
   header{margin-bottom:26px}
   h1{font-size:20px;font-weight:700;margin:0 0 6px;letter-spacing:.02em}
+  h1 .ver{font-family:var(--mono);font-size:12.5px;font-weight:700;letter-spacing:.05em;
+          color:var(--ink-faint);vertical-align:.12em;margin-left:3px}
+  h1 .ver.bad{color:var(--alert)}
+  #vermsg{margin:0 0 20px}
   .sub{color:var(--ink-soft);font-size:13px;margin:0}
   .legend{font-family:var(--mono);font-size:12.5px;background:var(--card);border:1px solid var(--rule);
           border-radius:6px;padding:12px 14px;margin:18px 0 0;line-height:2}
@@ -98,8 +102,10 @@
 <body>
 <div class="wrap">
 
+<div class="msg warn" id="vermsg" hidden></div>
+
 <header>
-  <h1>暗記カード整形ツール</h1>
+  <h1>Ankiカード整形ツール <span class="ver" id="ver"></span></h1>
   <p class="sub">プレフィックス付きテキストを、Anki取り込み用のTSVに変換します。</p>
   <div class="legend">
 <span class="k">Q</span> 問題（1枚に1行）<br>
@@ -168,7 +174,20 @@
   "use strict";
 
   /* ============================================================
+     このツールの版（表示専用）
+
+     版上げのときに書き換えるのは、次の1行とファイル名だけ。
+     ファイル名は <名前>_vNN.html の形にし、この値と一致させる。
+     一致しない場合は起動時に画面上部へ警告が出る（showVersion）。
+     ここから下の変換処理は、この値をいっさい参照しない。
+  ============================================================ */
+  var APP_VERSION = "v09";
+
+  /* ============================================================
      設定（card-machine-spec v08）
+     ※ FALLBACK_NAME は画面に出すツール名ではなく、
+       タグが無いときのデッキ名の既定値（spec §4-3・tests §6-4）。
+       ツールの改称に巻き込んで変更しないこと。
   ============================================================ */
   var NOTETYPE = "Basic-AnkiGen";
   var TAG_COLUMN = 3;
@@ -685,6 +704,36 @@
   });
   $("save").addEventListener("click", download);
 
+  /* ============================================================
+     版の表示と自己照合（表示のみ。カードの解析・変換には関与しない）
+  ============================================================ */
+  function showVersion(){
+    $("ver").textContent = APP_VERSION;
+    document.title = document.title + " " + APP_VERSION;   // 呼び出しは起動時の1回だけ
+
+    var path;
+    try { path = decodeURIComponent(location.pathname); }
+    catch(e){ path = location.pathname; }
+
+    // 照合はファイル名だけを見る。親フォルダ名（backup_v08 など）は無視する
+    var m = /_v(\d+)/.exec(path.split("/").pop());
+    if(!m) return;                                   // ファイル名に版が無ければ照合しない
+    var fromName = "v" + m[1];
+    if(fromName === APP_VERSION) return;
+
+    $("ver").className = "ver bad";
+    var box = $("vermsg");
+    var h = document.createElement("div");
+    h.className = "head"; h.textContent = "版の不一致";
+    var p = document.createElement("div");
+    p.textContent = "中身の版は " + APP_VERSION + " ですが、ファイル名は "
+      + fromName + " です。ファイル名を変えたか、別の版を上書き保存しています。"
+      + "正しいのは中身（" + APP_VERSION + "）です。";
+    box.appendChild(h); box.appendChild(p);
+    box.hidden = false;
+  }
+
+  showVersion();
   render();
 })();
 </script>
